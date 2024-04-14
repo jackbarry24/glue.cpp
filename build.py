@@ -1,4 +1,5 @@
 import subprocess
+import os
 
 def run_command(command, cwd=None):
     try:
@@ -9,23 +10,23 @@ def run_command(command, cwd=None):
         print(e.stderr)
 
 def main():
-    print("Updating bert.cpp submodule...")
+    print("1. Updating bert.cpp submodule...")
     run_command("git submodule update --init --recursive")
 
-    print("Updating ggml submodule...")
-    run_command("git submodule update --init --recursive", cwd="bert.cpp")
+    if not os.path.exists("bert.cpp/models/MiniLM-L6-v2"):
+        print("2. Downloading MiniLM-L6-v2 model...")
+        run_command("pip3 install -r requirements.txt", cwd="bert.cpp")
+        run_command("python3 models/download-ggml.py download all-MiniLM-L6-v2 q4_0", cwd="bert.cpp")
+    else:
+        print("2. MiniLM-L6-v2 model already downloaded.")
 
-    print("Downloading MiniLM-L6-v2 model...")
-    run_command("pip3 install -r requirements.txt", cwd="bert.cpp")
-    run_command("python3 models/download-ggml.py download all-MiniLM-L6-v2 q4_0", cwd="bert.cpp")
-
-    print("Building bert.cpp...")
+    print("3. Building bert.cpp...")
     build_dir = "bert.cpp/build"
     run_command("mkdir -p " + build_dir)
     run_command("cmake .. -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release", cwd=build_dir)
     run_command("make", cwd=build_dir)
 
-    print("Building glue.cpp...")
+    print("4. Building glue.cpp...")
     run_command("make", cwd=".")
 
 if __name__ == "__main__":

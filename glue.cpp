@@ -16,7 +16,7 @@
 
 #include "bert.h"
 
-#define EMBEDDING_DIM 768
+#define EMBEDDING_DIM 384
 #define DEFAULT_THRESHOLD 0.9
 #define DEFAULT_MAX_CHUNK_SIZE 250
 #define DEFAULT_MIN_CHUNK_SIZE 50
@@ -61,14 +61,10 @@ public:
         };
     }
 
-    // setter methods
-
     void set_vector(const std::vector<float> &embedding)
     {
         this->embedding = embedding;
     }
-
-    // getter methods
 
     std::string get_text() { return this->text; }
     int get_size() { return this->size; }
@@ -137,7 +133,7 @@ std::vector<std::string> init_text_chunker(const std::string &text)
 std::vector<Chunk> embed_init_chunks(const std::vector<std::string> &sentences)
 {
     bert_ctx* ctx = bert_load_from_file("bert.cpp/models/all-MiniLM-L6-v2/ggml-model-q4_0.bin");
-
+    
     if (ctx == nullptr)
     {
         std::cerr << "Failed to load model" << std::endl;
@@ -236,19 +232,34 @@ std::vector<Chunk> glue(
 }
 
 
-std::string chunk_map_tostring(const ChunkValue& chunk){
+std::string escape_json_string(const std::string& input) {
+    std::string output;
+    for (char c : input) {
+        switch (c) {
+            case '\n': output += "\\n"; break;
+            case '\r': output += "\\r"; break;
+            case '"': output += "\\\""; break;
+            case '\\': output += "\\\\"; break;
+            case '\t': output += "\\t"; break;
+            default: output += c;
+        }
+    }
+    return output;
+}
+
+std::string chunk_map_tostring(const ChunkValue& chunk) {
     std::ostringstream oss;
-    if (std::holds_alternative<std::string>(chunk)){
-        oss << "\"" << std::get<std::string>(chunk) << "\"";
-    } else if (std::holds_alternative<int>(chunk)){
+    if (std::holds_alternative<std::string>(chunk)) {
+        oss << "\"" << escape_json_string(std::get<std::string>(chunk)) << "\"";
+    } else if (std::holds_alternative<int>(chunk)) {
         oss << std::get<int>(chunk);
-    } else if (std::holds_alternative<std::vector<float>>(chunk)){
+    } else if (std::holds_alternative<std::vector<float>>(chunk)) {
         oss << "[";
         const auto& vec = std::get<std::vector<float>>(chunk);
         int n = vec.size();
-        for (int i = 0; i < n; i++){
+        for (int i = 0; i < n; i++) {
             oss << vec[i];
-            if (i < n - 1){
+            if (i < n - 1) {
                 oss << ", ";
             }
         }
@@ -329,15 +340,15 @@ int main(int argc, char* argv[])
     for (int i = 2; i < argc; i++){
         std::string arg = argv[i];
         if ((arg == "--threshold" || arg == "-t") && i + 1 < argc){
-            threshold = std::stof(argv[i++]);
+            threshold = std::stof(argv[++i]);
         }else if ((arg == "--max_chunk_size" || arg == "-x") && i + 1 < argc){
-            max_chunk_size = std::stoi(argv[i++]);
+            max_chunk_size = std::stoi(argv[++i]);
         }else if ((arg == "--min_chunk_size" || arg == "-n") && i + 1 < argc){
-            min_chunk_size = std::stoi(argv[i++]);
+            min_chunk_size = std::stoi(argv[++i]);
         }else if ((arg == "--overlap" || arg == "-o") && i + 1 < argc){
-            overlap = std::stoi(argv[i++]);
+            overlap = std::stoi(argv[++i]);
         }else if ((arg == "--path" || arg == "-p") && i + 1 < argc){
-            output_fpath = argv[i++];
+            output_fpath = argv[++i];
         }else if ((arg == "--help" || arg == "-h")){
             std::cout << help;
             return EXIT_SUCCESS;
@@ -370,5 +381,4 @@ int main(int argc, char* argv[])
         std::cerr << "Failed to write output to file" << std::endl;
         return EXIT_FAILURE;
     }
-
 }
