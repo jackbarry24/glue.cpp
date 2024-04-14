@@ -4,6 +4,7 @@
  */
 
 #include <string>
+#include <algorithm>
 #include <vector>
 #include <unordered_map>
 #include <variant>
@@ -42,13 +43,17 @@ public:
         this->embedding = embedding;
     }
 
-    std::string __str__()
+    std::string to_string()
     {
-        return "Chunk(text=" + this->text + ", seq=" + std::to_string(this->seq) + ")";
+        std::string clean = this->text.substr(0, 10);
+        clean.erase(std::remove(clean.begin(), clean.end(), '\n'), clean.end());
+        return "seq=" + std::to_string(seq) + ", text=" + clean + "...";
     }
 
-    std::unordered_map<std::string, ChunkValue> to_dict() const {
-        return std::unordered_map<std::string, ChunkValue> {
+    std::unordered_map<std::string, ChunkValue> to_dict() const 
+    {
+        return std::unordered_map<std::string, ChunkValue> 
+        {
             {"text", text},
             {"size", size},
             {"seq", seq},
@@ -87,14 +92,19 @@ float cosine_similarity(std::vector<float> v1, std::vector<float> v2){
     float dot_product = 0.0;
     float norm_v1 = 0.0;
     float norm_v2 = 0.0;
-    for (int i = 0; i < EMBEDDING_DIM; i++)
+    int n = std::min(v1.size(), v2.size());
+    for (int i = 0; i < n; i++)
     {
         dot_product += v1[i] * v2[i];
         norm_v1 += v1[i] * v1[i];
         norm_v2 += v2[i] * v2[i];
     }
-    return dot_product / (sqrt(norm_v1) * sqrt(norm_v2));
 
+    if (norm_v1 == 0 || norm_v2 == 0)
+    {
+        return 0.0;
+    }
+    return dot_product / (sqrt(norm_v1) * sqrt(norm_v2));
 }
 
 
@@ -128,15 +138,21 @@ std::vector<Chunk> embed_init_chunks(const std::vector<std::string> &sentences)
 {
     bert_ctx* ctx = bert_load_from_file("bert.cpp/models/all-MiniLM-L6-v2/ggml-model-q4_0.bin");
 
+    if (ctx == nullptr)
+    {
+        std::cerr << "Failed to load model" << std::endl;
+        return std::vector<Chunk>();
+    }
+
     std::vector<Chunk> chunks;
     int n = sentences.size();
 
     auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < n; i++)
     {   
-        std::cout << "Processing sentence: " << i << std::endl;
         std::vector<float> embedding = embedding_provider(sentences[i], ctx);
         Chunk chunk = Chunk(sentences[i], i, embedding);
+        std::cout << "Processing chunk: " << chunk.to_string() << std::endl;
         chunks.push_back(chunk);
     }
     auto end = std::chrono::high_resolution_clock::now();
@@ -169,6 +185,8 @@ std::vector<Chunk> glue(
     std::vector<Chunk> result = std::vector<Chunk>();
     std::vector<std::string> sentences = init_text_chunker(text);
     std::vector<Chunk> chunks = embed_init_chunks(sentences);
+
+    if (chunks.empty()) return result;
     int n = chunks.size();
 
     std::vector<std::vector<float>> similarity_matrix = std::vector<std::vector<float>>(n, std::vector<float>(n, -1.0));
@@ -241,7 +259,8 @@ std::string chunk_map_tostring(const ChunkValue& chunk){
 
 
 int output_json(const std::vector<Chunk>& chunks, const std::string& path){
-    std::ofstream outFile(path, std::ios::app);
+    std::ofstream outFile(path);
+
     if (!outFile.is_open()){
         std::cerr << "Failed to open output file: " << path << std::endl;
         return -1;
@@ -344,6 +363,8 @@ int main(int argc, char* argv[])
     }
 
     std::vector<Chunk> chunks = glue(text, threshold, max_chunk_size, min_chunk_size, overlap);
+
+    if (chunks.empty()) return EXIT_FAILURE;
 
     if ((output_json(chunks, output_fpath) == -1)){
         std::cerr << "Failed to write output to file" << std::endl;
