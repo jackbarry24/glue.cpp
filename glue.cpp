@@ -270,7 +270,6 @@ int output_json(const std::vector<Chunk>& chunks, const std::string& path){
 }
 
 
-
 std::string help = 
 "Usage: glue <input_file_path> [options]\n"
 "Arguments:\n"
@@ -286,6 +285,7 @@ std::string help =
 "                              This determines how many elements at the end of one chunk can be repeated at the beginning of the next chunk.\n"
 "  -p, --output <output_path>  Specify the path to the output file.\n"
 "                              If provided, the processed data will be written to this file. Otherwise, the output will be printed to stdout.\n";
+
 
 int main(int argc, char* argv[])
 {
