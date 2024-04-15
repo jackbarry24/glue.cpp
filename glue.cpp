@@ -109,24 +109,35 @@ std::vector<std::string> init_text_chunker(const std::string &text)
 {
     std::vector<std::string> sentences;
     std::string currentSentence;
+    bool inQuotes = false;
+
     for (char ch : text)
     {
         currentSentence += ch;
-        // Check if the current character is an end-of-sentence marker.
-        if (ch == '.' || ch == '!' || ch == '?')
+
+        if (ch == '"')
         {
+            inQuotes = !inQuotes;
+        }
+
+        // Check if the current character is an end-of-sentence marker
+        if ((ch == '.' || ch == '!' || ch == '?') && !inQuotes)
+        {
+            // Trim trailing whitespace
             currentSentence.erase(currentSentence.find_last_not_of(" \n\r\t") + 1);
             sentences.push_back(currentSentence);
             currentSentence.clear();
         }
     }
-    // Add any remaining text as the last sentence (if not empty).
+
+    // Add any remaining text as the last sentence (if not empty)
     if (!currentSentence.empty())
     {
-        // Trim spaces at the end (optional).
+        // Trim spaces at the end (optional)
         currentSentence.erase(currentSentence.find_last_not_of(" \n\r\t") + 1);
         sentences.push_back(currentSentence);
     }
+
     return sentences;
 }
 
@@ -149,7 +160,7 @@ std::vector<Chunk> embed_init_chunks(const std::vector<std::string> &sentences)
     {
         std::vector<float> embedding = embedding_provider(sentences[i], ctx);
         Chunk chunk = Chunk(sentences[i], i, embedding);
-        
+
         int checkpoint = std::round(i * 10.0 / n);
         int prev_checkpoint = (i == 0) ? 0 : std::round((i - 1) * 10.0 / n);
         if (checkpoint != prev_checkpoint)
@@ -222,7 +233,7 @@ std::vector<Chunk> glue(
             if (
                 (similarity_matrix[i][j] > threshold &&
                  running_size + chunks[j].get_size() <= max_chunk_size) ||
-                (running_size + chunks[j].get_size() <= min_chunk_size))
+                (running_size <= min_chunk_size))
             {
                 curr.push_back(chunks[j]);
                 running_size += chunks[j].get_size();
