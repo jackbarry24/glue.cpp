@@ -13,6 +13,7 @@
 #include <fstream>
 #include <sstream>
 #include <chrono>
+#include <thread>
 
 #include "bert.h"
 
@@ -72,7 +73,11 @@ public:
 std::vector<float> embedding_provider(const std::string &text, bert_ctx *ctx)
 {
     float *embeddings = new float[bert_n_embd(ctx)];
-    bert_encode(ctx, 1, text.c_str(), embeddings);
+
+    uint32_t threads_available = std::thread::hardware_concurrency();
+    uint32_t n_threads = std::min(threads_available, 2u);
+
+    bert_encode(ctx, n_threads, text.c_str(), embeddings);
 
     std::vector<float> result(embeddings, embeddings + bert_n_embd(ctx));
     delete[] embeddings;
@@ -138,12 +143,21 @@ std::vector<Chunk> embed_init_chunks(const std::vector<std::string> &sentences)
     std::vector<Chunk> chunks;
     int n = sentences.size();
 
+    std::cout << "Embedding Sentences 0%" << std::endl;
     auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < n; i++)
     {
         std::vector<float> embedding = embedding_provider(sentences[i], ctx);
         Chunk chunk = Chunk(sentences[i], i, embedding);
-        std::cout << "Processing chunk: " << chunk.to_string() << std::endl;
+        
+        int checkpoint = std::round(i * 10.0 / n);
+        int prev_checkpoint = (i == 0) ? 0 : std::round((i - 1) * 10.0 / n);
+        if (checkpoint != prev_checkpoint)
+        {
+            float progress = checkpoint * 10.0;
+            std::cout << "Embedding Sentences " << progress << "%" << std::endl;
+        }
+
         chunks.push_back(chunk);
     }
     auto end = std::chrono::high_resolution_clock::now();
@@ -185,6 +199,8 @@ std::vector<Chunk> glue(
     std::vector<Chunk> glued_chunks = std::vector<Chunk>();
 
     uint16_t seq = 0;
+
+    auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < n; i++)
     {
 
@@ -225,6 +241,11 @@ std::vector<Chunk> glue(
         Chunk chunk = Chunk(running_text, seq++, running_vector);
         result.push_back(chunk);
     }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    std::cout << "Glue Duration: " << elapsed.count() << " s" << std::endl;
+
     return result;
 }
 
