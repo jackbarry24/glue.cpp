@@ -100,35 +100,24 @@ std::vector<std::string> init_text_chunker(const std::string &text)
 {
     std::vector<std::string> sentences;
     std::string currentSentence;
-    bool inQuotes = false;
-
     for (char ch : text)
     {
         currentSentence += ch;
-
-        if (ch == '"')
+        // Check if the current character is an end-of-sentence marker.
+        if (ch == '.' || ch == '!' || ch == '?')
         {
-            inQuotes = !inQuotes;
-        }
-
-        // Check if the current character is an end-of-sentence marker
-        if ((ch == '.' || ch == '!' || ch == '?') && !inQuotes)
-        {
-            // Trim trailing whitespace
             currentSentence.erase(currentSentence.find_last_not_of(" \n\r\t") + 1);
             sentences.push_back(currentSentence);
             currentSentence.clear();
         }
     }
-
-    // Add any remaining text as the last sentence (if not empty)
+    // Add any remaining text as the last sentence (if not empty).
     if (!currentSentence.empty())
     {
-        // Trim spaces at the end (optional)
+        // Trim spaces at the end (optional).
         currentSentence.erase(currentSentence.find_last_not_of(" \n\r\t") + 1);
         sentences.push_back(currentSentence);
     }
-
     return sentences;
 }
 
