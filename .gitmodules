@@ -1,3 +1,3 @@
 [submodule "bert.cpp"]
 	path = bert.cpp
-	url = git@github.com:iamlemec/bert.cpp.git
+	url = https://github.com/iamlemec/bert.cpp.git
