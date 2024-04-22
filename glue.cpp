@@ -17,10 +17,11 @@
 
 #include "bert.h"
 
+#define AVG_WORD_LEN 5
 #define EMBEDDING_DIM 384
-#define DEFAULT_THRESHOLD 0.9
-#define DEFAULT_MAX_CHUNK_SIZE 250
-#define DEFAULT_MIN_CHUNK_SIZE 50
+#define DEFAULT_THRESHOLD 0.5
+#define DEFAULT_MAX_CHUNK_SIZE (150 * AVG_WORD_LEN)
+#define DEFAULT_MIN_CHUNK_SIZE (75 * AVG_WORD_LEN)
 #define DEFAULT_OVERLAP 1
 #define OUTPUT_PATH "glue-output.json"
 
@@ -29,19 +30,14 @@ using ChunkValue = std::variant<std::string, int, std::vector<float>>;
 class Chunk
 {
 private:
-    std::string text;
+    std::string text;                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
     uint16_t size;
     uint16_t seq;
     std::vector<float> embedding;
 
 public:
-    Chunk(const std::string &text, const uint16_t seq, const std::vector<float> &embedding)
-    {
-        this->text = text;
-        this->size = text.size();
-        this->seq = seq;
-        this->embedding = embedding;
-    }
+    Chunk(const std::string &text, uint16_t seq, const std::vector<float> &embedding)
+        : text(text), size(text.size()), seq(seq), embedding(embedding) {}
 
     std::string to_string()
     {
@@ -72,20 +68,15 @@ public:
 
 std::vector<float> embedding_provider(const std::string &text, bert_ctx *ctx)
 {
-    float *embeddings = new float[bert_n_embd(ctx)];
-
+    auto embeddings = std::make_unique<float[]>(bert_n_embd(ctx));
     uint32_t threads_available = std::thread::hardware_concurrency();
     uint32_t n_threads = std::min(threads_available, 2u);
-
-    bert_encode(ctx, n_threads, text.c_str(), embeddings);
-
-    std::vector<float> result(embeddings, embeddings + bert_n_embd(ctx));
-    delete[] embeddings;
-
+    bert_encode(ctx, n_threads, text.c_str(), embeddings.get());
+    std::vector<float> result(embeddings.get(), embeddings.get() + bert_n_embd(ctx));
     return result;
 }
 
-float cosine_similarity(std::vector<float> v1, std::vector<float> v2)
+float cosine_similarity(const std::vector<float> v1, const std::vector<float> v2)
 {
     float dot_product = 0.0;
     float norm_v1 = 0.0;
@@ -141,6 +132,14 @@ std::vector<std::string> init_text_chunker(const std::string &text)
     return sentences;
 }
 
+std::string preprocess(std::string sentence){
+    std::transform(sentence.begin(), sentence.end(), sentence.begin(), ::tolower);
+    sentence.erase(std::remove(sentence.begin(), sentence.end(), '\n'), sentence.end());
+    sentence.erase(std::remove(sentence.begin(), sentence.end(), '\t'), sentence.end());
+    sentence.erase(std::remove_if(sentence.begin(), sentence.end(), [](char c) { return !std::isalnum(c) && !std::isspace(c); }), sentence.end());
+    return sentence;
+}
+
 std::vector<Chunk> embed_init_chunks(const std::vector<std::string> &sentences)
 {
     bert_ctx *ctx = bert_load_from_file("bert.cpp/models/all-MiniLM-L6-v2/ggml-model-q4_0.bin");
@@ -158,6 +157,7 @@ std::vector<Chunk> embed_init_chunks(const std::vector<std::string> &sentences)
     auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < n; i++)
     {
+        // std::vector<float> embedding = embedding_provider(preprocess(sentences[i]), ctx);
         std::vector<float> embedding = embedding_provider(sentences[i], ctx);
         Chunk chunk = Chunk(sentences[i], i, embedding);
 
@@ -240,15 +240,12 @@ std::vector<Chunk> glue(
                 running_text += chunks[j].get_text();
                 running_vector = average_vectors(running_vector, chunks[j].get_vector());
             }
-            else
-            {
-                break;
-            }
+            else break;
 
             j++;
         }
 
-        i = std::max(j - overlap, i + 1);
+        i = std::max(j - overlap - 1, i);
         Chunk chunk = Chunk(running_text, seq++, running_vector);
         result.push_back(chunk);
     }
@@ -362,9 +359,9 @@ std::string help =
     "  -t, --threshold <value>     Set the similarity threshold for chunking (float).\n"
     "                              This determines how similar text chunks need to be in order to be processed together.\n"
     "  -x, --max_chunk_size <size> Set the maximum size of a chunk (integer).\n"
-    "                              This limits the maximum number of elements (e.g., words, characters) a single chunk can contain.\n"
+    "                              This limits the maximum number of elements (words) a single chunk can contain (not exact).\n"
     "  -n, --min_chunk_size <size> Set the minimum size of a chunk (integer).\n"
-    "                              This specifies the minimum number of elements a chunk must contain to be considered valid.\n"
+    "                              This specifies the minimum number of elements (words) a chunk will have (not exact).\n"
     "  -o, --overlap <size>        Set the overlap size between chunks (integer).\n"
     "                              This determines how many elements at the end of one chunk can be repeated at the beginning of the next chunk.\n"
     "  -p, --output <output_path>  Specify the path to the output file.\n"
@@ -443,6 +440,8 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    max_chunk_size *= AVG_WORD_LEN;
+    min_chunk_size *= AVG_WORD_LEN;
     std::vector<Chunk> chunks = glue(text, threshold, max_chunk_size, min_chunk_size, overlap);
 
     if (chunks.empty())
