@@ -69,8 +69,7 @@ public:
 std::vector<float> embedding_provider(const std::string &text, bert_ctx *ctx)
 {
     auto embeddings = std::make_unique<float[]>(bert_n_embd(ctx));
-    uint32_t threads_available = std::thread::hardware_concurrency();
-    uint32_t n_threads = std::min(threads_available, 2u);
+    uint32_t n_threads = (uint32_t)(std::thread::hardware_concurrency()/2u);
     bert_encode(ctx, n_threads, text.c_str(), embeddings.get());
     std::vector<float> result(embeddings.get(), embeddings.get() + bert_n_embd(ctx));
     return result;
@@ -163,7 +162,9 @@ std::vector<Chunk> embed_init_chunks(const std::vector<std::string> &sentences)
     auto end = std::chrono::high_resolution_clock::now();
 
     std::chrono::duration<double> elapsed = end - start;
-    std::cout << "Initial Embedding Duration: " << elapsed.count() << " s" << std::endl;
+    std::cout << "Initial Embedding Duration: " << elapsed.count() << "s";
+    std::cout << " (" << (elapsed.count() / n) << "s per sentence)" << std::endl;
+
     bert_free(ctx);
     return chunks;
 }
