@@ -66,10 +66,14 @@ public:
     std::vector<float> get_vector() { return this->embedding; }
 };
 
-std::vector<float> embedding_provider(const std::string &text, bert_ctx *ctx)
+std::vector<float> embedding_provider(const std::string &text, bert_ctx *ctx, uint32_t n_threads)
 {
     auto embeddings = std::make_unique<float[]>(bert_n_embd(ctx));
-    uint32_t n_threads = (uint32_t)(std::thread::hardware_concurrency()/2u);
+    if (n_threads == 0)
+    {
+        n_threads = std::thread::hardware_concurrency() - 1;
+        if (n_threads == 0) n_threads = 1;
+    }
     bert_encode(ctx, n_threads, text.c_str(), embeddings.get());
     std::vector<float> result(embeddings.get(), embeddings.get() + bert_n_embd(ctx));
     return result;
@@ -128,7 +132,7 @@ std::string preprocess(std::string sentence){
     return sentence;
 }
 
-std::vector<Chunk> embed_init_chunks(const std::vector<std::string> &sentences)
+std::vector<Chunk> embed_init_chunks(const std::vector<std::string> &sentences, uint32_t n_threads)
 {
     bert_ctx *ctx = bert_load_from_file("bert.cpp/models/all-MiniLM-L6-v2/ggml-model-q4_0.bin");
 
@@ -145,8 +149,7 @@ std::vector<Chunk> embed_init_chunks(const std::vector<std::string> &sentences)
     auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < n; i++)
     {
-        // std::vector<float> embedding = embedding_provider(preprocess(sentences[i]), ctx);
-        std::vector<float> embedding = embedding_provider(sentences[i], ctx);
+        std::vector<float> embedding = embedding_provider(preprocess(sentences[i]), ctx, n_threads);
         Chunk chunk = Chunk(sentences[i], i, embedding);
 
         int checkpoint = std::round(i * 10.0 / n);
@@ -185,11 +188,12 @@ std::vector<Chunk> glue(
     float threshold,
     uint16_t max_chunk_size,
     uint16_t min_chunk_size,
-    uint16_t overlap)
+    uint16_t overlap,
+    uint32_t n_threads)
 {
     std::vector<Chunk> result = std::vector<Chunk>();
     std::vector<std::string> sentences = init_text_chunker(text);
-    std::vector<Chunk> chunks = embed_init_chunks(sentences);
+    std::vector<Chunk> chunks = embed_init_chunks(sentences, n_threads);
 
     if (chunks.empty())
         return result;
@@ -378,6 +382,7 @@ int main(int argc, char *argv[])
     uint16_t min_chunk_size = DEFAULT_MIN_CHUNK_SIZE;
     uint16_t overlap = DEFAULT_OVERLAP;
     std::string output_fpath = OUTPUT_PATH;
+    uint32_t n_threads = 0;
 
     for (int i = 2; i < argc; i++)
     {
@@ -407,6 +412,10 @@ int main(int argc, char *argv[])
             std::cout << help;
             return EXIT_SUCCESS;
         }
+        else if ((arg == "--cores" || arg == "-c") && i + 1 < argc)
+        {
+            n_threads = std::stoi(argv[++i]);
+        }
         else
         {
             std::cerr << "Unknown option: " << arg << " , use -h for options" << std::endl;
@@ -432,10 +441,12 @@ int main(int argc, char *argv[])
 
     max_chunk_size *= AVG_WORD_LEN;
     min_chunk_size *= AVG_WORD_LEN;
-    std::vector<Chunk> chunks = glue(text, threshold, max_chunk_size, min_chunk_size, overlap);
+    std::vector<Chunk> chunks = glue(text, threshold, max_chunk_size, min_chunk_size, overlap, n_threads);
 
     if (chunks.empty())
+    {
         return EXIT_FAILURE;
+    }
 
     if ((output_json(chunks, output_fpath) == -1))
     {
